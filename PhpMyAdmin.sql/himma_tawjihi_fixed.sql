@@ -1,482 +1,569 @@
--- phpMyAdmin SQL Dump
--- version 5.2.1
--- https://www.phpmyadmin.net/
---
--- Host: 127.0.0.1
--- Generation Time: Dec 12, 2025
--- Server version: 10.4.32-MariaDB
--- PHP Version: 8.2.12
 
-SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
-START TRANSACTION;
-SET time_zone = "+00:00";
 
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
-/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
-/*!40101 SET NAMES utf8mb4 */;
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
 
---
--- Database: `himma_tawjihi`
---
-CREATE DATABASE IF NOT EXISTS `himma_tawjihi` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE `himma_tawjihi`;
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subjects' AND COLUMN_NAME = 'name');
 
--- --------------------------------------------------------
+SET @sql = IF(@col_exists = 0, 
+    'ALTER TABLE `subjects` ADD COLUMN `name` VARCHAR(200) GENERATED ALWAYS AS (`title`) STORED AFTER `title`',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
---
--- Table structure for table `activity_log`
---
+-- إضافة فهرس على عمود name
+SET @idx_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subjects' AND INDEX_NAME = 'idx_name');
 
-DROP TABLE IF EXISTS `activity_log`;
-CREATE TABLE `activity_log` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
-  `action` varchar(100) NOT NULL,
-  `description` text DEFAULT NULL,
-  `ip_address` varchar(45) DEFAULT NULL,
-  `user_agent` text DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_user_id` (`user_id`),
-  KEY `idx_created_at` (`created_at`)
+SET @sql = IF(@idx_exists = 0, 
+    'ALTER TABLE `subjects` ADD INDEX `idx_name` (`name`)',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- ============================================================
+-- ============================================================
+
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches' AND COLUMN_NAME = 'manager_id');
+
+SET @sql = IF(@col_exists = 0, 
+    'ALTER TABLE `branches` ADD COLUMN `manager_id` INT NULL DEFAULT NULL, ADD INDEX `idx_manager` (`manager_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- ============================================================
+-- 3. جدول المناطق (app_d2335_regions)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `app_d2335_regions` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL,
+    `description` TEXT DEFAULT NULL,
+    `code` VARCHAR(10) DEFAULT NULL,
+    `manager_id` INT NULL DEFAULT NULL,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_name` (`name`),
+    INDEX `idx_active` (`is_active`),
+    INDEX `idx_manager` (`manager_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `activity_log`
---
+-- ============================================================
+-- 4. جدول المناطق (regions) - النسخة البديلة المستخدمة في بعض الملفات
+-- ============================================================
 
-INSERT INTO `activity_log` (`id`, `user_id`, `action`, `description`, `ip_address`, `user_agent`, `created_at`) VALUES
-(1, 4, 'register', 'إنشاء حساب جديد', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', '2025-10-30 11:08:04'),
-(2, 4, 'login', 'تسجيل دخول ناجح', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', '2025-10-30 11:08:26'),
-(3, 5, 'register', 'إنشاء حساب جديد', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', '2025-10-30 11:37:56'),
-(4, 5, 'login', 'تسجيل دخول ناجح', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', '2025-10-30 11:38:13'),
-(5, 1, 'login', 'تسجيل دخول ناجح', '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', '2025-10-30 11:43:55');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `admin_permissions`
---
-
-DROP TABLE IF EXISTS `admin_permissions`;
-CREATE TABLE `admin_permissions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `admin_id` int(11) NOT NULL,
-  `branch_id` int(11) DEFAULT NULL,
-  `permissions` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`permissions`)),
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_admin_id` (`admin_id`),
-  KEY `idx_branch_id` (`branch_id`)
+CREATE TABLE IF NOT EXISTS `regions` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL,
+    `description` TEXT DEFAULT NULL,
+    `code` VARCHAR(10) DEFAULT NULL,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_name` (`name`),
+    INDEX `idx_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-- ============================================================
+-- 5. جدول المديريات (app_d2335_directorates)
+-- ============================================================
 
---
--- Table structure for table `branches`
---
-
-DROP TABLE IF EXISTS `branches`;
-CREATE TABLE `branches` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL,
-  `description` text DEFAULT NULL,
-  `manager_id` int(11) DEFAULT NULL,
-  `address` text DEFAULT NULL,
-  `phone` varchar(20) DEFAULT NULL,
-  `email` varchar(100) DEFAULT NULL,
-  `is_active` tinyint(1) DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_manager_id` (`manager_id`)
+CREATE TABLE IF NOT EXISTS `app_d2335_directorates` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL,
+    `code` VARCHAR(20) NOT NULL,
+    `region_id` INT NOT NULL,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_region` (`region_id`),
+    INDEX `idx_code` (`code`),
+    INDEX `idx_active` (`is_active`),
+    FOREIGN KEY (`region_id`) REFERENCES `app_d2335_regions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `branches`
---
+-- ============================================================
+-- 6. جدول مدراء المناطق (app_d2335_region_managers)
+-- ============================================================
 
-INSERT INTO `branches` (`id`, `name`, `description`, `manager_id`, `address`, `phone`, `email`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 'الفرع الرئيسي - غزة', 'الفرع الرئيسي في مدينة غزة', 18, 'غزة - شارع الجامعة', '08-2123456', 'gaza@himma.edu', 1, '2025-12-05 20:40:48', '2025-12-05 20:40:48'),
-(2, 'فرع الشمال', 'فرع شمال غزة وجباليا', 19, 'جباليا - شارع فلسطين', '08-2123457', 'north@himma.edu', 1, '2025-12-05 20:40:48', '2025-12-05 20:40:48'),
-(3, 'فرع الوسطى', 'فرع المحافظة الوسطى', 20, 'دير البلح - شارع الشهداء', '08-2123458', 'middle@himma.edu', 1, '2025-12-05 20:40:48', '2025-12-05 20:40:48'),
-(4, 'فرع خان يونس', 'فرع محافظة خان يونس', NULL, 'خان يونس - شارع جمال عبد الناصر', '08-2123459', 'khanyounis@himma.edu', 1, '2025-12-05 20:40:48', '2025-12-05 20:40:48'),
-(5, 'فرع رفح', 'فرع محافظة رفح', NULL, 'رفح - شارع الشهداء', '08-2123460', 'rafah@himma.edu', 1, '2025-12-05 20:40:48', '2025-12-05 20:40:48');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `users`
---
-
-DROP TABLE IF EXISTS `users`;
-CREATE TABLE `users` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `username` varchar(50) NOT NULL,
-  `email` varchar(100) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `full_name` varchar(100) NOT NULL,
-  `phone` varchar(20) DEFAULT NULL,
-  `role` enum('admin','teacher','student') NOT NULL DEFAULT 'student',
-  `branch_id` int(11) DEFAULT NULL,
-  `is_active` tinyint(1) DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `username` (`username`),
-  UNIQUE KEY `email` (`email`),
-  KEY `idx_role` (`role`),
-  KEY `idx_branch_id` (`branch_id`)
+CREATE TABLE IF NOT EXISTS `app_d2335_region_managers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `region_id` INT NOT NULL,
+    `assigned_by` INT NOT NULL,
+    `permissions` JSON DEFAULT NULL,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    `assigned_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `deactivated_at` TIMESTAMP NULL DEFAULT NULL,
+    INDEX `idx_user` (`user_id`),
+    INDEX `idx_region` (`region_id`),
+    INDEX `idx_active` (`is_active`),
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`region_id`) REFERENCES `app_d2335_regions`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`assigned_by`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `users`
---
+-- ============================================================
+-- 7. جدول مدراء المناطق (region_managers) - النسخة البديلة
+-- ============================================================
 
-INSERT INTO `users` (`id`, `username`, `email`, `password`, `full_name`, `phone`, `role`, `branch_id`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 'admin', 'admin@himma.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'المدير العام', '0599999999', 'admin', 1, 1, '2025-10-29 14:32:39', '2025-10-29 14:32:39'),
-(2, 'teacher1', 'teacher1@himma.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'أحمد محمد', '0598888888', 'teacher', 1, 1, '2025-10-29 14:32:39', '2025-10-29 14:32:39'),
-(4, 'student1', 'student1@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'محمد علي', '0597777777', 'student', 1, 1, '2025-10-30 11:08:04', '2025-10-30 11:08:04'),
-(5, 'teacher2', 'teacher2@himma.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'فاطمة أحمد', '0596666666', 'teacher', 2, 1, '2025-10-30 11:37:56', '2025-10-30 11:37:56');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `subjects`
---
-
-DROP TABLE IF EXISTS `subjects`;
-CREATE TABLE `subjects` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `title` varchar(200) NOT NULL,
-  `description` text DEFAULT NULL,
-  `teacher_id` int(11) NOT NULL,
-  `branch_id` int(11) DEFAULT NULL,
-  `category` varchar(50) DEFAULT NULL,
-  `level` varchar(50) DEFAULT NULL,
-  `price` decimal(10,2) DEFAULT 0.00,
-  `thumbnail` varchar(500) DEFAULT NULL,
-  `is_active` tinyint(1) DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_teacher_id` (`teacher_id`),
-  KEY `idx_branch_id` (`branch_id`),
-  KEY `idx_category` (`category`)
+CREATE TABLE IF NOT EXISTS `region_managers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `region_id` INT DEFAULT NULL,
+    `assigned_by` INT NOT NULL,
+    `permissions` JSON DEFAULT NULL,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    `assigned_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `deactivated_at` TIMESTAMP NULL DEFAULT NULL,
+    `notes` TEXT DEFAULT NULL,
+    INDEX `idx_user` (`user_id`),
+    INDEX `idx_region` (`region_id`),
+    INDEX `idx_active` (`is_active`),
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`assigned_by`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `subjects`
---
+-- ============================================================
+-- 8. جدول وكلاء المناطق (app_d2335_region_deputies)
+-- ============================================================
 
-INSERT INTO `subjects` (`id`, `title`, `description`, `teacher_id`, `branch_id`, `category`, `level`, `price`, `thumbnail`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 'الرياضيات المتقدمة', 'مادة الرياضيات للتوجيهي', 2, 1, 'علمي', 'توجيهي', 150.00, NULL, 1, '2025-10-29 14:31:40', '2025-10-29 14:31:40'),
-(2, 'الفيزياء العامة', 'مادة الفيزياء للتوجيهي', 2, 1, 'علمي', 'توجيهي', 120.00, NULL, 1, '2025-10-29 14:31:40', '2025-10-29 14:31:40'),
-(3, 'اللغة العربية', 'مادة اللغة العربية', 2, 1, 'أدبي', 'توجيهي', 100.00, NULL, 1, '2025-10-29 14:31:40', '2025-10-29 14:31:40'),
-(5, 'الكيمياء', 'مادة الكيمياء للتوجيهي', 5, 1, 'علمي', 'توجيهي', 130.00, NULL, 1, '2025-10-30 11:37:56', '2025-10-30 11:37:56'),
-(6, 'اللغة العربية', 'مادة اللغة العربية', 8, 2, 'أدبي', 'توجيهي', 20.00, NULL, 1, '2025-11-01 13:35:13', '2025-11-01 13:35:13'),
-(8, 'التربية الاسلامية', 'مادة التربية الاسلامية', 5, 1, 'ديني', 'توجيهي', 50.00, NULL, 1, '2025-11-07 16:48:15', '2025-11-07 16:48:15');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `contact_messages`
---
-
-DROP TABLE IF EXISTS `contact_messages`;
-CREATE TABLE `contact_messages` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL,
-  `email` varchar(100) NOT NULL,
-  `phone` varchar(20) DEFAULT NULL,
-  `subject` varchar(200) NOT NULL,
-  `message` text NOT NULL,
-  `status` enum('new','read','replied') DEFAULT 'new',
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_status` (`status`),
-  KEY `idx_created_at` (`created_at`)
+CREATE TABLE IF NOT EXISTS `app_d2335_region_deputies` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `region_id` INT NOT NULL,
+    `directorate` VARCHAR(100) NOT NULL,
+    `directorate_id` INT NULL DEFAULT NULL,
+    `assigned_by` INT NOT NULL,
+    `permissions` JSON DEFAULT NULL,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    `assigned_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `deactivated_at` TIMESTAMP NULL DEFAULT NULL,
+    INDEX `idx_user` (`user_id`),
+    INDEX `idx_region` (`region_id`),
+    INDEX `idx_directorate` (`directorate_id`),
+    INDEX `idx_active` (`is_active`),
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`region_id`) REFERENCES `app_d2335_regions`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`directorate_id`) REFERENCES `app_d2335_directorates`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`assigned_by`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `contact_messages`
---
+-- ============================================================
+-- 9. جدول وكلاء المناطق (region_deputies) - النسخة البديلة
+-- ============================================================
 
-INSERT INTO `contact_messages` (`id`, `name`, `email`, `subject`, `message`, `status`, `created_at`, `updated_at`, `phone`) VALUES
-(1, 'محمد أحمد', 'ghadasryle@gmail.com', 'عدم ظهور مساقاتي', 'ارجو منكم التواصل معي باسرع ما يمكن', 'new', '2025-11-03 21:05:05', '2025-11-03 21:05:05', '0123456791'),
-(2, 'هالة محمد عوض', 'ghadayousef2020.prog@gmail.com', 'خطأ في الدخول', 'الرجاء التواصل معي', 'new', '2025-11-08 10:02:46', '2025-11-08 10:02:46', '0595796544');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `enrollments`
---
-
-DROP TABLE IF EXISTS `enrollments`;
-CREATE TABLE `enrollments` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
-  `subject_id` int(11) NOT NULL,
-  `enrollment_date` timestamp NOT NULL DEFAULT current_timestamp(),
-  `progress_percentage` decimal(5,2) DEFAULT 0.00,
-  `status` enum('active','completed','cancelled') DEFAULT 'active',
-  `payment_status` enum('pending','paid','refunded') DEFAULT 'pending',
-  `payment_amount` decimal(10,2) DEFAULT NULL,
-  `payment_date` timestamp NULL DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  KEY `idx_user_id` (`user_id`),
-  KEY `idx_subject_id` (`subject_id`),
-  KEY `idx_status` (`status`)
+CREATE TABLE IF NOT EXISTS `region_deputies` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `region_id` INT DEFAULT NULL,
+    `directorate` VARCHAR(100) DEFAULT NULL,
+    `directorate_id` INT NULL DEFAULT NULL,
+    `assigned_by` INT DEFAULT NULL,
+    `appointed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    `permissions` JSON DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_user` (`user_id`),
+    INDEX `idx_region` (`region_id`),
+    INDEX `idx_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `enrollments`
---
+-- ============================================================
+-- 10. جدول طلبات المعلمين (app_d2335_teacher_applications)
+-- ============================================================
 
-INSERT INTO `enrollments` (`id`, `user_id`, `subject_id`, `enrollment_date`, `progress_percentage`, `status`, `payment_status`, `payment_amount`, `payment_date`) VALUES
-(2, 4, 1, '2025-10-30 11:55:36', 0.00, 'active', 'pending', NULL, NULL),
-(3, 4, 2, '2025-10-30 11:55:39', 0.00, 'active', 'pending', NULL, NULL),
-(5, 4, 5, '2025-11-02 06:06:09', 0.00, 'active', 'pending', NULL, NULL);
-
--- --------------------------------------------------------
-
---
--- Table structure for table `lessons`
---
-
-DROP TABLE IF EXISTS `lessons`;
-CREATE TABLE `lessons` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `subject_id` int(11) NOT NULL,
-  `title` varchar(200) NOT NULL,
-  `description` text DEFAULT NULL,
-  `content` text DEFAULT NULL,
-  `video_url` varchar(500) DEFAULT NULL,
-  `video_type` enum('none','youtube','upload') DEFAULT 'none',
-  `file_path` varchar(500) DEFAULT NULL,
-  `file_size` int(11) DEFAULT NULL,
-  `order_num` int(11) DEFAULT 1,
-  `duration_minutes` int(11) DEFAULT 0,
-  `is_free` tinyint(1) DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_subject_id` (`subject_id`),
-  KEY `idx_order_num` (`order_num`)
+CREATE TABLE IF NOT EXISTS `app_d2335_teacher_applications` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `teacher_name` VARCHAR(100) NOT NULL,
+    `full_name` VARCHAR(100) DEFAULT NULL,
+    `email` VARCHAR(100) NOT NULL,
+    `phone` VARCHAR(20) DEFAULT NULL,
+    `region_id` INT DEFAULT NULL,
+    `directorate` VARCHAR(100) DEFAULT NULL,
+    `directorate_id` INT DEFAULT NULL,
+    `subject_specialization` VARCHAR(200) NOT NULL,
+    `experience_years` INT DEFAULT 0,
+    `education_level` VARCHAR(50) DEFAULT NULL,
+    `qualifications` TEXT DEFAULT NULL,
+    `cv_file` VARCHAR(500) DEFAULT NULL,
+    `certificates_file` VARCHAR(500) DEFAULT NULL,
+    `status` ENUM('pending', 'approved', 'rejected', 'under_review') DEFAULT 'pending',
+    `teacher_user_id` INT DEFAULT NULL,
+    `review_notes` TEXT DEFAULT NULL,
+    `admin_notes` TEXT DEFAULT NULL,
+    `submitted_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `reviewed_by` INT DEFAULT NULL,
+    `reviewed_at` TIMESTAMP NULL DEFAULT NULL,
+    `approved_at` TIMESTAMP NULL DEFAULT NULL,
+    `approved_by` INT DEFAULT NULL,
+    INDEX `idx_email` (`email`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_region` (`region_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `lessons`
---
+-- ============================================================
+-- 11. جدول طلبات المعلمين (teacher_applications) - النسخة البديلة
+-- ============================================================
 
-INSERT INTO `lessons` (`id`, `subject_id`, `title`, `description`, `content`, `video_url`, `video_type`, `file_path`, `file_size`, `order_num`, `duration_minutes`, `is_free`, `created_at`, `updated_at`) VALUES
-(2, 6, 'شرح البحور', 'بحر الكامل', 'تقطيع البيت الشعري', 'https://youtu.be/uZDhHRQCSCo?si=cDbEyFCk7v4Aaa1R', 'youtube', NULL, NULL, 1, 50, 1, '2025-11-01 13:36:46', '2025-11-01 13:36:46'),
-(3, 6, 'بحور اللغة العربية', 'بحر الكامل', 'تقطيع البيت الشعري', 'uploads/videos/video_69060d56660e6_1762004310.mp4', 'upload', NULL, NULL, 1, 50, 1, '2025-11-01 13:38:30', '2025-11-01 13:41:10');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `lesson_progress`
---
-
-DROP TABLE IF EXISTS `lesson_progress`;
-CREATE TABLE `lesson_progress` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
-  `lesson_id` int(11) NOT NULL,
-  `completed` tinyint(1) DEFAULT 0,
-  `completed_at` datetime DEFAULT NULL,
-  `created_at` datetime DEFAULT current_timestamp(),
-  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_user_lesson` (`user_id`, `lesson_id`),
-  KEY `idx_lesson_id` (`lesson_id`)
+CREATE TABLE IF NOT EXISTS `teacher_applications` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `teacher_name` VARCHAR(100) DEFAULT NULL,
+    `full_name` VARCHAR(100) NOT NULL,
+    `email` VARCHAR(100) NOT NULL,
+    `phone` VARCHAR(20) DEFAULT NULL,
+    `region_id` INT DEFAULT NULL,
+    `subject_specialization` VARCHAR(200) NOT NULL,
+    `experience_years` INT DEFAULT 0,
+    `education_level` VARCHAR(50) DEFAULT NULL,
+    `cv_file` VARCHAR(500) DEFAULT NULL,
+    `certificates_file` VARCHAR(500) DEFAULT NULL,
+    `status` ENUM('pending', 'approved', 'rejected', 'under_review') DEFAULT 'pending',
+    `admin_notes` TEXT DEFAULT NULL,
+    `review_notes` TEXT DEFAULT NULL,
+    `teacher_user_id` INT DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `approved_at` TIMESTAMP NULL DEFAULT NULL,
+    `approved_by` INT DEFAULT NULL,
+    `reviewed_by` INT DEFAULT NULL,
+    `reviewed_at` TIMESTAMP NULL DEFAULT NULL,
+    INDEX `idx_email` (`email`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_region` (`region_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-- ============================================================
+-- 12. جدول موافقات المعلمين (teacher_approvals)
+-- ============================================================
 
---
--- Table structure for table `notifications`
---
-
-DROP TABLE IF EXISTS `notifications`;
-CREATE TABLE `notifications` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
-  `title` varchar(200) NOT NULL,
-  `message` text NOT NULL,
-  `type` enum('system','chat','assignment','grade','announcement','info','success','warning','error') DEFAULT 'system',
-  `is_read` tinyint(1) DEFAULT 0,
-  `read_at` timestamp NULL DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_user_id` (`user_id`),
-  KEY `idx_is_read` (`is_read`),
-  KEY `idx_created_at` (`created_at`)
+CREATE TABLE IF NOT EXISTS `teacher_approvals` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `teacher_id` INT NOT NULL,
+    `branch_id` INT NOT NULL,
+    `super_admin_id` INT NULL DEFAULT NULL,
+    `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    `notes` TEXT DEFAULT NULL,
+    `requested_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `approved_at` TIMESTAMP NULL DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_teacher` (`teacher_id`),
+    INDEX `idx_branch` (`branch_id`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_super_admin` (`super_admin_id`),
+    FOREIGN KEY (`teacher_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`branch_id`) REFERENCES `branches`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`super_admin_id`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-- ============================================================
+-- 13. جدول الملفات الشخصية (user_profiles)
+-- ============================================================
 
---
--- Table structure for table `notification_settings`
---
-
-DROP TABLE IF EXISTS `notification_settings`;
-CREATE TABLE `notification_settings` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `user_id` int(11) NOT NULL,
-  `chat_notifications` tinyint(1) DEFAULT 1,
-  `assignment_notifications` tinyint(1) DEFAULT 1,
-  `grade_notifications` tinyint(1) DEFAULT 1,
-  `announcement_notifications` tinyint(1) DEFAULT 1,
-  `email_notifications` tinyint(1) DEFAULT 0,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_user_settings` (`user_id`)
+CREATE TABLE IF NOT EXISTS `user_profiles` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT NOT NULL,
+    `date_of_birth` DATE NULL DEFAULT NULL,
+    `gender` ENUM('male', 'female') NULL DEFAULT NULL,
+    `nationality` VARCHAR(100) NULL DEFAULT NULL,
+    `address` TEXT NULL DEFAULT NULL,
+    `city` VARCHAR(100) NULL DEFAULT NULL,
+    `emergency_contact_name` VARCHAR(100) NULL DEFAULT NULL,
+    `emergency_contact_phone` VARCHAR(20) NULL DEFAULT NULL,
+    `education_level` VARCHAR(50) NULL DEFAULT NULL,
+    `specialization` VARCHAR(100) NULL DEFAULT NULL,
+    `years_of_experience` INT DEFAULT 0,
+    `qualifications` TEXT NULL DEFAULT NULL,
+    `interests` TEXT NULL DEFAULT NULL,
+    `profile_completion_percentage` INT DEFAULT 0,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `unique_user_profile` (`user_id`),
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-- ============================================================
+-- 14. جدول سجل أنشطة الإدارة (admin_activity_log)
+-- ============================================================
 
---
--- Table structure for table `quizzes`
---
-
-DROP TABLE IF EXISTS `quizzes`;
-CREATE TABLE `quizzes` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `subject_id` int(11) NOT NULL,
-  `title` varchar(200) NOT NULL,
-  `description` text DEFAULT NULL,
-  `quiz_type` enum('midterm','final','quiz','assignment') NOT NULL DEFAULT 'quiz',
-  `total_marks` int(11) NOT NULL DEFAULT 100,
-  `pass_marks` int(11) NOT NULL DEFAULT 60,
-  `duration` int(11) NOT NULL DEFAULT 60,
-  `attempts_allowed` int(11) DEFAULT 3,
-  `start_date` datetime DEFAULT NULL,
-  `end_date` datetime DEFAULT NULL,
-  `is_active` tinyint(1) DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_subject_id` (`subject_id`),
-  KEY `idx_is_active` (`is_active`)
+CREATE TABLE IF NOT EXISTS `admin_activity_log` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `admin_id` INT NOT NULL,
+    `action_type` VARCHAR(50) NOT NULL,
+    `action_description` TEXT NOT NULL,
+    `target_user_id` INT DEFAULT NULL,
+    `ip_address` VARCHAR(45) DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_admin` (`admin_id`),
+    INDEX `idx_action` (`action_type`),
+    INDEX `idx_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `quizzes`
---
+-- ============================================================
+-- 15. جدول خيارات الاختبارات (quiz_options)
+-- ============================================================
 
-INSERT INTO `quizzes` (`id`, `subject_id`, `title`, `description`, `quiz_type`, `total_marks`, `pass_marks`, `duration`, `attempts_allowed`, `start_date`, `end_date`, `is_active`, `created_at`, `updated_at`) VALUES
-(1, 1, 'اختبار الرياضيات النصفي', 'اختبار نصفي شامل في الرياضيات', 'midterm', 100, 60, 90, 3, NULL, NULL, 1, '2025-10-29 14:31:40', '2025-10-29 14:31:40');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `quiz_questions`
---
-
-DROP TABLE IF EXISTS `quiz_questions`;
-CREATE TABLE `quiz_questions` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `quiz_id` int(11) NOT NULL,
-  `question_text` text NOT NULL,
-  `question_type` enum('multiple_choice','true_false','short_answer') NOT NULL DEFAULT 'multiple_choice',
-  `options` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`options`)),
-  `correct_answer` text NOT NULL,
-  `explanation` text DEFAULT NULL,
-  `marks` int(11) NOT NULL DEFAULT 1,
-  `order_num` int(11) DEFAULT 1,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_quiz_id` (`quiz_id`),
-  KEY `idx_order_num` (`order_num`)
+CREATE TABLE IF NOT EXISTS `quiz_options` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `question_id` INT NOT NULL,
+    `option_text` TEXT NOT NULL,
+    `is_correct` BOOLEAN DEFAULT FALSE,
+    `order_number` INT DEFAULT 1,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_question` (`question_id`),
+    FOREIGN KEY (`question_id`) REFERENCES `quiz_questions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
---
--- Dumping data for table `quiz_questions`
---
+-- ============================================================
+-- 16. جدول إجابات الاختبارات (quiz_answers)
+-- ============================================================
 
-INSERT INTO `quiz_questions` (`id`, `quiz_id`, `question_text`, `question_type`, `options`, `correct_answer`, `explanation`, `marks`, `order_num`, `created_at`) VALUES
-(1, 1, 'ما هو ناتج 2 + 2؟', 'multiple_choice', '["2", "3", "4", "5"]', '4', NULL, 5, 1, '2025-10-29 14:31:40'),
-(2, 1, 'الرقم 7 هو عدد أولي', 'true_false', '["صح", "خطأ"]', 'صح', NULL, 3, 1, '2025-10-29 14:31:40');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `quiz_results`
---
-
-DROP TABLE IF EXISTS `quiz_results`;
-CREATE TABLE `quiz_results` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `quiz_id` int(11) NOT NULL,
-  `user_id` int(11) NOT NULL,
-  `score` decimal(5,2) NOT NULL,
-  `total_questions` int(11) NOT NULL,
-  `correct_answers` int(11) NOT NULL,
-  `time_taken` int(11) NOT NULL,
-  `answers` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`answers`)),
-  `is_passed` tinyint(1) DEFAULT 0,
-  `attempt_number` int(11) DEFAULT 1,
-  `completed_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`id`),
-  KEY `idx_quiz_id` (`quiz_id`),
-  KEY `idx_user_id` (`user_id`)
+CREATE TABLE IF NOT EXISTS `quiz_answers` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `result_id` INT NOT NULL,
+    `question_id` INT NOT NULL,
+    `selected_option_id` INT DEFAULT NULL,
+    `answer_text` TEXT DEFAULT NULL,
+    `is_correct` BOOLEAN DEFAULT FALSE,
+    `marks_earned` DECIMAL(5,2) DEFAULT 0.00,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_result` (`result_id`),
+    INDEX `idx_question` (`question_id`),
+    FOREIGN KEY (`result_id`) REFERENCES `quiz_results`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`question_id`) REFERENCES `quiz_questions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- --------------------------------------------------------
+-- ============================================================
+-- 17. جدول بنك الأسئلة (question_bank)
+-- ============================================================
 
---
--- Add Foreign Key Constraints
---
+CREATE TABLE IF NOT EXISTS `question_bank` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `subject_id` INT NOT NULL,
+    `question_text` TEXT NOT NULL,
+    `question_type` ENUM('multiple_choice', 'true_false', 'short_answer', 'essay') DEFAULT 'multiple_choice',
+    `category` VARCHAR(100) DEFAULT NULL,
+    `options` JSON DEFAULT NULL,
+    `correct_answer` TEXT DEFAULT NULL,
+    `difficulty` ENUM('easy', 'medium', 'hard') DEFAULT 'medium',
+    `marks` DECIMAL(5,2) DEFAULT 1.00,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_subject` (`subject_id`),
+    INDEX `idx_category` (`category`),
+    INDEX `idx_type` (`question_type`),
+    FOREIGN KEY (`subject_id`) REFERENCES `subjects`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `activity_log`
-  ADD CONSTRAINT `fk_activity_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+-- ============================================================
+-- 18. جدول الشهادات (certificates)
+-- ============================================================
 
-ALTER TABLE `admin_permissions`
-  ADD CONSTRAINT `fk_admin_permissions_admin` FOREIGN KEY (`admin_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_admin_permissions_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL;
+CREATE TABLE IF NOT EXISTS `certificates` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `certificate_id` VARCHAR(100) NOT NULL UNIQUE,
+    `student_id` INT NOT NULL,
+    `subject_id` INT NOT NULL,
+    `issue_date` DATE NOT NULL,
+    `grade` VARCHAR(10) DEFAULT NULL,
+    `score` DECIMAL(5,2) DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_student` (`student_id`),
+    INDEX `idx_subject` (`subject_id`),
+    INDEX `idx_certificate_id` (`certificate_id`),
+    FOREIGN KEY (`student_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`subject_id`) REFERENCES `subjects`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `branches`
-  ADD CONSTRAINT `fk_branch_manager` FOREIGN KEY (`manager_id`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+-- ============================================================
+-- 19. جدول تعليقات الدروس (lesson_comments)
+-- ============================================================
 
-ALTER TABLE `subjects`
-  ADD CONSTRAINT `fk_subject_teacher` FOREIGN KEY (`teacher_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_subject_branch` FOREIGN KEY (`branch_id`) REFERENCES `branches` (`id`) ON DELETE SET NULL;
+CREATE TABLE IF NOT EXISTS `lesson_comments` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `lesson_id` INT NOT NULL,
+    `user_id` INT NOT NULL,
+    `parent_id` INT DEFAULT NULL,
+    `comment_text` TEXT NOT NULL,
+    `is_approved` BOOLEAN DEFAULT TRUE,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX `idx_lesson` (`lesson_id`),
+    INDEX `idx_user` (`user_id`),
+    INDEX `idx_parent` (`parent_id`),
+    FOREIGN KEY (`lesson_id`) REFERENCES `lessons`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `enrollments`
-  ADD CONSTRAINT `fk_enrollment_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_enrollment_subject` FOREIGN KEY (`subject_id`) REFERENCES `subjects` (`id`) ON DELETE CASCADE;
+-- ============================================================
+-- 20. جدول إعجابات التعليقات (comment_likes)
+-- ============================================================
 
-ALTER TABLE `lessons`
-  ADD CONSTRAINT `fk_lesson_subject` FOREIGN KEY (`subject_id`) REFERENCES `subjects` (`id`) ON DELETE CASCADE;
+CREATE TABLE IF NOT EXISTS `comment_likes` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `comment_id` INT NOT NULL,
+    `user_id` INT NOT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `unique_like` (`comment_id`, `user_id`),
+    INDEX `idx_comment` (`comment_id`),
+    INDEX `idx_user` (`user_id`),
+    FOREIGN KEY (`comment_id`) REFERENCES `lesson_comments`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `lesson_progress`
-  ADD CONSTRAINT `fk_progress_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_progress_lesson` FOREIGN KEY (`lesson_id`) REFERENCES `lessons` (`id`) ON DELETE CASCADE;
+-- ============================================================
+-- 21. جدول تقييمات الدروس (lesson_ratings)
+-- ============================================================
 
-ALTER TABLE `notifications`
-  ADD CONSTRAINT `fk_notification_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+CREATE TABLE IF NOT EXISTS `lesson_ratings` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `lesson_id` INT NOT NULL,
+    `student_id` INT NOT NULL,
+    `rating` TINYINT NOT NULL CHECK (`rating` BETWEEN 1 AND 5),
+    `review` TEXT DEFAULT NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `unique_rating` (`lesson_id`, `student_id`),
+    INDEX `idx_lesson` (`lesson_id`),
+    INDEX `idx_student` (`student_id`),
+    FOREIGN KEY (`lesson_id`) REFERENCES `lessons`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`student_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `notification_settings`
-  ADD CONSTRAINT `fk_settings_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+-- ============================================================
+-- 22. جدول مشاهدات الدروس (lesson_views)
+-- ============================================================
 
-ALTER TABLE `quizzes`
-  ADD CONSTRAINT `fk_quiz_subject` FOREIGN KEY (`subject_id`) REFERENCES `subjects` (`id`) ON DELETE CASCADE;
+CREATE TABLE IF NOT EXISTS `lesson_views` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `lesson_id` INT NOT NULL,
+    `student_id` INT NOT NULL,
+    `viewed_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `progress_percentage` INT DEFAULT 0,
+    UNIQUE KEY `unique_view` (`lesson_id`, `student_id`),
+    INDEX `idx_lesson` (`lesson_id`),
+    INDEX `idx_student` (`student_id`),
+    FOREIGN KEY (`lesson_id`) REFERENCES `lessons`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`student_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `quiz_questions`
-  ADD CONSTRAINT `fk_question_quiz` FOREIGN KEY (`quiz_id`) REFERENCES `quizzes` (`id`) ON DELETE CASCADE;
+-- ============================================================
+-- 23. جدول رسائل المحادثات (chat_messages)
+-- ============================================================
 
-ALTER TABLE `quiz_results`
-  ADD CONSTRAINT `fk_result_quiz` FOREIGN KEY (`quiz_id`) REFERENCES `quizzes` (`id`) ON DELETE CASCADE,
-  ADD CONSTRAINT `fk_result_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+CREATE TABLE IF NOT EXISTS `chat_messages` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `conversation_id` INT NOT NULL,
+    `sender_id` INT NOT NULL,
+    `message_text` TEXT NOT NULL,
+    `message_type` ENUM('text', 'image', 'file') DEFAULT 'text',
+    `is_read` BOOLEAN DEFAULT FALSE,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_conversation` (`conversation_id`),
+    INDEX `idx_sender` (`sender_id`),
+    INDEX `idx_read` (`is_read`),
+    FOREIGN KEY (`sender_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-COMMIT;
+-- ============================================================
+-- 24. جدول المشاركين في المحادثات (chat_participants)
+-- ============================================================
 
-/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
-/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
-/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+CREATE TABLE IF NOT EXISTS `chat_participants` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `conversation_id` INT NOT NULL,
+    `user_id` INT NOT NULL,
+    `joined_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `is_active` BOOLEAN DEFAULT TRUE,
+    UNIQUE KEY `unique_participant` (`conversation_id`, `user_id`),
+    INDEX `idx_conversation` (`conversation_id`),
+    INDEX `idx_user` (`user_id`),
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 25. جدول الرسائل العامة (messages)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `messages` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `sender_id` INT NOT NULL,
+    `recipient_id` INT NOT NULL,
+    `subject` VARCHAR(255) DEFAULT NULL,
+    `message_text` TEXT NOT NULL,
+    `is_read` BOOLEAN DEFAULT FALSE,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_sender` (`sender_id`),
+    INDEX `idx_recipient` (`recipient_id`),
+    INDEX `idx_read` (`is_read`),
+    FOREIGN KEY (`sender_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`recipient_id`) REFERENCES `users`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 26. إدراج بيانات المناطق الأساسية
+-- ============================================================
+
+INSERT IGNORE INTO `app_d2335_regions` (`name`, `description`, `code`, `is_active`) VALUES
+('شمال غزة', 'محافظة شمال غزة', 'NG', TRUE),
+('غزة', 'محافظة غزة', 'GZ', TRUE),
+('الوسطى', 'محافظة الوسطى', 'MD', TRUE),
+('خان يونس', 'محافظة خان يونس', 'KY', TRUE),
+('رفح', 'محافظة رفح', 'RF', TRUE);
+
+-- نسخ نفس البيانات لجدول regions
+INSERT IGNORE INTO `regions` (`name`, `description`, `code`, `is_active`) VALUES
+('شمال غزة', 'محافظة شمال غزة', 'NG', TRUE),
+('غزة', 'محافظة غزة', 'GZ', TRUE),
+('الوسطى', 'محافظة الوسطى', 'MD', TRUE),
+('خان يونس', 'محافظة خان يونس', 'KY', TRUE),
+('رفح', 'محافظة رفح', 'RF', TRUE);
+
+-- ============================================================
+-- إعادة تفعيل فحص المفاتيح الأجنبية
+-- ============================================================
+
+
+-- ============================================================
+-- 27. إصلاح عمود duration_weeks المفقود في جدول courses
+-- ============================================================
+
+SET @col_exists = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'courses' AND COLUMN_NAME = 'duration_weeks');
+
+SET @sql = IF(@col_exists = 0, 
+    'ALTER TABLE `courses` ADD COLUMN `duration_weeks` INT DEFAULT 0 AFTER `description`',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- إضافة عمود duration_weeks لجدول subjects أيضاً إذا لم يكن موجوداً
+SET @col_exists2 = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'subjects' AND COLUMN_NAME = 'duration_weeks');
+
+SET @sql2 = IF(@col_exists2 = 0, 
+    'ALTER TABLE `subjects` ADD COLUMN `duration_weeks` INT DEFAULT 0',
+    'SELECT 1');
+PREPARE stmt2 FROM @sql2;
+EXECUTE stmt2;
+DEALLOCATE PREPARE stmt2;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- عبر phpMyAdmin:
+--   اذهب إلى قاعدة البيانات > استيراد > اختر الملف > تنفيذ
+-- 
+-- عبر سطر الأوامر:
+--   mysql -u username -p database_name < fix_database.sql
+-- ============================================================
