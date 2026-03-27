@@ -1,0 +1,10 @@
+# حماية مجلد الملفات المرفوعة
+Options -Indexes
+<FilesMatch "\.(php|php3|php4|php5|phtml)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+<FilesMatch "\.(jpg|jpeg|png|gif|pdf|doc|docx)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>

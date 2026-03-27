@@ -1,0 +1,71 @@
+# منصة همّة التوجيهي - إعدادات الحماية والتوجيه
+
+# Enforce HTTPS in production, allow HTTP on localhost/private networks to avoid invalid certificate warnings
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Mark local/dev environments (no HTTPS certs)
+  RewriteCond %{HTTP_HOST} ^localhost$ [OR]
+  RewriteCond %{HTTP_HOST} ^127\.0\.0\.1$ [OR]
+  RewriteCond %{HTTP_HOST} ^::1$ [OR]
+  RewriteCond %{HTTP_HOST} ^10\..*$ [OR]
+  RewriteCond %{HTTP_HOST} ^192\.168\..*$
+  RewriteRule ^ - [E=IS_LOCAL:1]
+
+  # Enforce HTTPS only when not local/dev
+  RewriteCond %{ENV:IS_LOCAL} !1
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https [OR]
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+# تفعيل إعادة الكتابة
+RewriteEngine On
+
+# منع الوصول المباشر لملفات الإعدادات
+<Files "*.php">
+    <RequireAll>
+        Require all granted
+    </RequireAll>
+</Files>
+
+# حماية ملفات قاعدة البيانات
+<Files "database*.sql">
+    Require all denied
+</Files>
+
+# حماية ملفات السجلات
+<Files "*.log">
+    Require all denied
+</Files>
+
+# منع عرض محتويات المجلدات
+Options -Indexes
+
+# إعدادات الأمان
+Header always set X-Content-Type-Options nosniff
+Header always set X-Frame-Options DENY
+Header always set X-XSS-Protection "1; mode=block"
+
+# ضغط الملفات
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+</IfModule>
+
+# تخزين مؤقت للملفات الثابتة
+<IfModule mod_expires.c>
+    ExpiresActive on
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+</IfModule>
