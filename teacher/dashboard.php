@@ -27,6 +27,43 @@ if (!$teacher) {
     redirect('../auth/logout.php');
 }
 
+// ============================================================
+// التحقق من وجود عمود teacher_id في جدول subjects وإضافته إذا لم يكن موجوداً
+// ============================================================
+try {
+    $check_column = $conn->prepare("SHOW COLUMNS FROM subjects LIKE 'teacher_id'");
+    $check_column->execute();
+    $column_exists = $check_column->fetch();
+    
+    if (!$column_exists) {
+        // إضافة العمود teacher_id
+        $conn->exec("ALTER TABLE `subjects` ADD COLUMN `teacher_id` INT NULL AFTER `id`, ADD INDEX `idx_teacher` (`teacher_id`)");
+        
+        // محاولة إضافة القيد الخارجي
+        try {
+            $conn->exec("ALTER TABLE `subjects` ADD CONSTRAINT `fk_subjects_teacher` FOREIGN KEY (`teacher_id`) REFERENCES `users`(`id`) ON DELETE CASCADE");
+        } catch (Exception $e) {
+            // القيد قد يكون موجوداً بالفعل
+        }
+    }
+} catch (Exception $e) {
+    // معالجة الخطأ بهدوء - قد يكون لدينا صلاحيات محدودة
+    error_log("Column check error: " . $e->getMessage());
+}
+
+// التحقق من وجود عمود is_active
+try {
+    $check_active = $conn->prepare("SHOW COLUMNS FROM subjects LIKE 'is_active'");
+    $check_active->execute();
+    $active_exists = $check_active->fetch();
+    
+    if (!$active_exists) {
+        $conn->exec("ALTER TABLE `subjects` ADD COLUMN `is_active` BOOLEAN DEFAULT TRUE");
+    }
+} catch (Exception $e) {
+    error_log("Active column check error: " . $e->getMessage());
+}
+
 /**
  * كشف اسم العمود المستخدم لاسم المادة في جدول subjects.
  * سنبحث عن أسماء شائعة: name, subject_name, title, subject
