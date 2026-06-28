@@ -28,7 +28,7 @@ if (!$teacher) {
 }
 
 // ============================================================
-// التحقق من وجود عمود teacher_id في جدول subjects وإضافته إذا لم يكن موجوداً
+// التحقق من وجود عمود teacher_id في جدول subjects وإضافته تلقائياً
 // ============================================================
 try {
     $check_column = $conn->prepare("SHOW COLUMNS FROM subjects LIKE 'teacher_id'");
@@ -36,10 +36,7 @@ try {
     $column_exists = $check_column->fetch();
     
     if (!$column_exists) {
-        // إضافة العمود teacher_id
         $conn->exec("ALTER TABLE `subjects` ADD COLUMN `teacher_id` INT NULL AFTER `id`, ADD INDEX `idx_teacher` (`teacher_id`)");
-        
-        // محاولة إضافة القيد الخارجي
         try {
             $conn->exec("ALTER TABLE `subjects` ADD CONSTRAINT `fk_subjects_teacher` FOREIGN KEY (`teacher_id`) REFERENCES `users`(`id`) ON DELETE CASCADE");
         } catch (Exception $e) {
@@ -47,8 +44,7 @@ try {
         }
     }
 } catch (Exception $e) {
-    // معالجة الخطأ بهدوء - قد يكون لدينا صلاحيات محدودة
-    error_log("Column check error: " . $e->getMessage());
+    // معالجة الخطأ بهدوء
 }
 
 // التحقق من وجود عمود is_active
@@ -61,16 +57,14 @@ try {
         $conn->exec("ALTER TABLE `subjects` ADD COLUMN `is_active` BOOLEAN DEFAULT TRUE");
     }
 } catch (Exception $e) {
-    error_log("Active column check error: " . $e->getMessage());
+    // معالجة الخطأ بهدوء
 }
 
 /**
- * كشف اسم العمود المستخدم لاسم المادة في جدول subjects.
- * سنبحث عن أسماء شائعة: name, subject_name, title, subject
- * ثم نستخدم الاسم المكتشف في الاستعلامات لنعرض البيانات بدون خطأ Unknown column 's.name'.
+ * كشف اسم العمود المستخدم لاسم المادة في جدول subjects
  */
 $subject_name_candidates = ['name', 'subject_name', 'title', 'subject'];
-$subject_name_col = 'name'; // قيمة افتراضية
+$subject_name_col = 'name';
 
 try {
     $in_list = "'" . implode("','", array_map('addslashes', $subject_name_candidates)) . "'";
@@ -89,32 +83,32 @@ try {
         $subject_name_col = $col_row['COLUMN_NAME'];
     }
 } catch (Exception $e) {
-    // في حال فشل كشف العمود (مثلاً صلاحيات محدودة)، نكمل بالقيمة الافتراضية 'name'.
-    // لا نقوم بعرض رسالة للمستخدم هنا لتجنب إفشاء تفاصيل النظام.
     $subject_name_col = 'name';
 }
 
-// تأكيد أن اسم العمود آمن للاستخدام داخل استعلامات SQL (أحرف وأرقام و underscore فقط)
 if (!preg_match('/^[a-zA-Z0-9_]+$/', $subject_name_col)) {
     $subject_name_col = 'name';
 }
 
 // جلب إحصائيات المعلم
-$stats_stmt = $conn->prepare("
-    SELECT 
-        COUNT(DISTINCT s.id) as total_subjects,
-        COUNT(DISTINCT e.user_id) as total_students,
-        COUNT(DISTINCT q.id) as total_quizzes,
-        AVG(e.progress_percentage) as avg_progress
-    FROM subjects s
-    LEFT JOIN enrollments e ON s.id = e.subject_id AND e.status = 'active'
-    LEFT JOIN quizzes q ON s.id = q.subject_id
-    WHERE s.teacher_id = ?
-");
-$stats_stmt->execute([$user_id]);
-$stats = $stats_stmt->fetch();
+try {
+    $stats_stmt = $conn->prepare("
+        SELECT 
+            COUNT(DISTINCT s.id) as total_subjects,
+            COUNT(DISTINCT e.user_id) as total_students,
+            COUNT(DISTINCT q.id) as total_quizzes,
+            AVG(e.progress_percentage) as avg_progress
+        FROM subjects s
+        LEFT JOIN enrollments e ON s.id = e.subject_id AND e.status = 'active'
+        LEFT JOIN quizzes q ON s.id = q.subject_id
+        WHERE s.teacher_id = ?
+    ");
+    $stats_stmt->execute([$user_id]);
+    $stats = $stats_stmt->fetch();
+} catch (Exception $e) {
+    $stats = null;
+}
 
-// التأكد من وجود البيانات وتعيين قيم افتراضية
 if (!$stats) {
     $stats = [
         'total_subjects' => 0,
@@ -125,54 +119,64 @@ if (!$stats) {
 }
 
 // جلب المواد الحديثة
-// نعيد تسمية عمود اسم المادة إلى alias "name" ليتوافق مع بقية القالب
-$recent_subjects_sql = "
-    SELECT s.*, s.`" . $subject_name_col . "` AS name,
-           COUNT(DISTINCT e.user_id) as student_count,
-           COUNT(DISTINCT q.id) as quiz_count
-    FROM subjects s
-    LEFT JOIN enrollments e ON s.id = e.subject_id AND e.status = 'active'
-    LEFT JOIN quizzes q ON s.id = q.subject_id
-    WHERE s.teacher_id = ?
-    GROUP BY s.id
-    ORDER BY s.created_at DESC
-    LIMIT 6
-";
-$recent_subjects_stmt = $conn->prepare($recent_subjects_sql);
-$recent_subjects_stmt->execute([$user_id]);
-$recent_subjects = $recent_subjects_stmt->fetchAll();
+try {
+    $recent_subjects_sql = "
+        SELECT s.*, s.`" . $subject_name_col . "` AS name,
+               COUNT(DISTINCT e.user_id) as student_count,
+               COUNT(DISTINCT q.id) as quiz_count
+        FROM subjects s
+        LEFT JOIN enrollments e ON s.id = e.subject_id AND e.status = 'active'
+        LEFT JOIN quizzes q ON s.id = q.subject_id
+        WHERE s.teacher_id = ?
+        GROUP BY s.id
+        ORDER BY s.created_at DESC
+        LIMIT 6
+    ";
+    $recent_subjects_stmt = $conn->prepare($recent_subjects_sql);
+    $recent_subjects_stmt->execute([$user_id]);
+    $recent_subjects = $recent_subjects_stmt->fetchAll();
+} catch (Exception $e) {
+    $recent_subjects = [];
+}
 
 // جلب الطلاب الجدد
-// نعيد تسمية عمود اسم المادة إلى alias "subject_name" ليتوافق مع القالب
-$recent_students_sql = "
-    SELECT u.full_name, u.email, s.`" . $subject_name_col . "` AS subject_name, e.enrollment_date
-    FROM enrollments e
-    INNER JOIN users u ON e.user_id = u.id
-    INNER JOIN subjects s ON e.subject_id = s.id
-    WHERE s.teacher_id = ? AND e.status = 'active'
-    ORDER BY e.enrollment_date DESC
-    LIMIT 5
-";
-$recent_students_stmt = $conn->prepare($recent_students_sql);
-$recent_students_stmt->execute([$user_id]);
-$recent_students = $recent_students_stmt->fetchAll();
+try {
+    $recent_students_sql = "
+        SELECT u.full_name, u.email, s.`" . $subject_name_col . "` AS subject_name, e.enrollment_date
+        FROM enrollments e
+        INNER JOIN users u ON e.user_id = u.id
+        INNER JOIN subjects s ON e.subject_id = s.id
+        WHERE s.teacher_id = ? AND e.status = 'active'
+        ORDER BY e.enrollment_date DESC
+        LIMIT 5
+    ";
+    $recent_students_stmt = $conn->prepare($recent_students_sql);
+    $recent_students_stmt->execute([$user_id]);
+    $recent_students = $recent_students_stmt->fetchAll();
+} catch (Exception $e) {
+    $recent_students = [];
+}
 
 // جلب الاختبارات الحديثة
-$recent_quizzes_sql = "
-    SELECT q.*, s.`" . $subject_name_col . "` as subject_name,
-           COUNT(qr.id) as attempts_count,
-           AVG(qr.score) as avg_score
-    FROM quizzes q
-    INNER JOIN subjects s ON q.subject_id = s.id
-    LEFT JOIN quiz_results qr ON q.id = qr.quiz_id
-    WHERE s.teacher_id = ?
-    GROUP BY q.id
-    ORDER BY q.created_at DESC
-    LIMIT 5
-";
-$recent_quizzes_stmt = $conn->prepare($recent_quizzes_sql);
-$recent_quizzes_stmt->execute([$user_id]);
-$recent_quizzes = $recent_quizzes_stmt->fetchAll();
+try {
+    $recent_quizzes_sql = "
+        SELECT q.*, s.`" . $subject_name_col . "` as subject_name,
+               COUNT(qr.id) as attempts_count,
+               AVG(qr.score) as avg_score
+        FROM quizzes q
+        INNER JOIN subjects s ON q.subject_id = s.id
+        LEFT JOIN quiz_results qr ON q.id = qr.quiz_id
+        WHERE s.teacher_id = ?
+        GROUP BY q.id
+        ORDER BY q.created_at DESC
+        LIMIT 5
+    ";
+    $recent_quizzes_stmt = $conn->prepare($recent_quizzes_sql);
+    $recent_quizzes_stmt->execute([$user_id]);
+    $recent_quizzes = $recent_quizzes_stmt->fetchAll();
+} catch (Exception $e) {
+    $recent_quizzes = [];
+}
 
 // دالة لتوليد ألوان موحدة حسب الفئة
 function getCategoryGradient($category) {
@@ -206,11 +210,8 @@ function getCategoryIcon($category) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>لوحة تحكم المعلم - منصة همّة التوجيهي</title>
     
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     
     <style>
@@ -254,7 +255,6 @@ function getCategoryIcon($category) {
             border-radius: 8px;
         }
 
-        /* تنسيق شارات العداد */
         .notification-badge {
             position: absolute;
             top: -5px;
@@ -442,7 +442,6 @@ function getCategoryIcon($category) {
             transform: translateX(-5px);
         }
 
-        /* تنسيق أزرار الدردشة والإشعارات */
         .chat-notifications-section {
             position: fixed;
             bottom: 20px;
@@ -466,6 +465,7 @@ function getCategoryIcon($category) {
             display: flex;
             align-items: center;
             justify-content: center;
+            cursor: pointer;
         }
 
         .floating-btn:hover {
@@ -502,7 +502,6 @@ function getCategoryIcon($category) {
     </style>
 </head>
 <body>
-    <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="../home/index.php">
@@ -538,7 +537,6 @@ function getCategoryIcon($category) {
                 </ul>
                 
                 <ul class="navbar-nav">
-                    <!-- زر المحادثات -->
                     <li class="nav-item">
                         <a class="nav-link position-relative" href="../chat/chat_interface.php" title="المحادثات">
                             <i class="fas fa-comments"></i>
@@ -546,7 +544,6 @@ function getCategoryIcon($category) {
                         </a>
                     </li>
                     
-                    <!-- زر الإشعارات -->
                     <li class="nav-item">
                         <a class="nav-link position-relative" href="../notifications/view_all.php" title="الإشعارات">
                             <i class="fas fa-bell"></i>
@@ -568,10 +565,8 @@ function getCategoryIcon($category) {
         </div>
     </nav>
 
-    <!-- Main Content -->
     <div class="main-content">
         <div class="container">
-            <!-- Welcome Section -->
             <div class="welcome-card">
                 <div class="row align-items-center">
                     <div class="col-md-8">
@@ -584,43 +579,33 @@ function getCategoryIcon($category) {
                 </div>
             </div>
 
-            <!-- Statistics Grid -->
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-book-open"></i>
-                    </div>
+                    <div class="stat-icon"><i class="fas fa-book-open"></i></div>
                     <div class="stat-value"><?php echo (int)($stats['total_subjects'] ?? 0); ?></div>
                     <div class="stat-label">إجمالي المواد</div>
                 </div>
 
                 <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-users"></i>
-                    </div>
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
                     <div class="stat-value"><?php echo (int)($stats['total_students'] ?? 0); ?></div>
                     <div class="stat-label">إجمالي الطلاب</div>
                 </div>
 
                 <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-clipboard-list"></i>
-                    </div>
+                    <div class="stat-icon"><i class="fas fa-clipboard-list"></i></div>
                     <div class="stat-value"><?php echo (int)($stats['total_quizzes'] ?? 0); ?></div>
                     <div class="stat-label">إجمالي الاختبارات</div>
                 </div>
 
                 <div class="stat-card">
-                    <div class="stat-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
+                    <div class="stat-icon"><i class="fas fa-chart-line"></i></div>
                     <div class="stat-value"><?php echo number_format((float)($stats['avg_progress'] ?? 0), 1); ?>%</div>
                     <div class="stat-label">متوسط تقدم الطلاب</div>
                 </div>
             </div>
 
             <div class="row">
-                <!-- Recent Subjects -->
                 <div class="col-lg-8">
                     <h3 class="section-title"><i class="fas fa-book"></i> موادي الدراسية</h3>
                     
@@ -640,7 +625,6 @@ function getCategoryIcon($category) {
                             <?php foreach ($recent_subjects as $subject): ?>
                             <div class="col-md-6 mb-3">
                                 <div class="card subject-card">
-                                    <!-- Subject Header -->
                                     <div class="subject-header" style="background: <?php echo getCategoryGradient($subject['category'] ?? 'default'); ?>">
                                         <i class="<?php echo getCategoryIcon($subject['category'] ?? 'default'); ?> subject-icon"></i>
                                         <div class="subject-title-overlay">
@@ -681,9 +665,7 @@ function getCategoryIcon($category) {
                     <?php endif; ?>
                 </div>
 
-                <!-- Sidebar -->
                 <div class="col-lg-4">
-                    <!-- Recent Students -->
                     <h4 class="section-title"><i class="fas fa-user-plus"></i> الطلاب الجدد</h4>
                     
                     <?php if (empty($recent_students)): ?>
@@ -716,7 +698,6 @@ function getCategoryIcon($category) {
                         </div>
                     <?php endif; ?>
 
-                    <!-- Recent Quizzes -->
                     <h4 class="section-title mt-4"><i class="fas fa-clipboard-check"></i> الاختبارات الحديثة</h4>
                     
                     <?php if (empty($recent_quizzes)): ?>
@@ -756,7 +737,6 @@ function getCategoryIcon($category) {
         </div>
     </div>
 
-    <!-- أزرار الدردشة والإشعارات العائمة -->
     <div class="chat-notifications-section">
         <a href="../chat/chat_interface.php" class="floating-btn chat-btn" title="المحادثات">
             <i class="fas fa-comments"></i>
@@ -768,19 +748,15 @@ function getCategoryIcon($category) {
         </a>
     </div>
 
-    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- نظام الإشعارات -->
     <script src="../js/notifications.js"></script>
     
     <script>
-        // تحديث الشارات العائمة أيضاً
         const originalUpdateBadges = window.notificationSystem?.updateBadges;
         if (originalUpdateBadges) {
             window.notificationSystem.updateBadges = function(counts) {
                 originalUpdateBadges.call(this, counts);
                 
-                // تحديث الشارات العائمة
                 const floatingChatBadge = document.getElementById('floating-chat-badge');
                 const floatingNotificationBadge = document.getElementById('floating-notification-badge');
                 
