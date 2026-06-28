@@ -17,71 +17,108 @@ $db = new Database();
 $conn = $db->connect();
 $teacher_id = $_SESSION['user_id'];
 
+// ============================================================
+// التحقق من وجود عمود price في جدول subjects وإضافته تلقائياً
+// ============================================================
+try {
+    $check_price = $conn->prepare("SHOW COLUMNS FROM subjects LIKE 'price'");
+    $check_price->execute();
+    $price_exists = $check_price->fetch();
+    
+    if (!$price_exists) {
+        $conn->exec("ALTER TABLE `subjects` ADD COLUMN `price` DECIMAL(10, 2) DEFAULT 0");
+    }
+} catch (Exception $e) {
+    // معالجة الخطأ بهدوء
+}
+
 // جلب مواد المعلم
-$subjects_stmt = $conn->prepare("SELECT id, name FROM subjects WHERE teacher_id = ? AND is_active = 1");
-$subjects_stmt->execute([$teacher_id]);
-$teacher_subjects = $subjects_stmt->fetchAll();
+try {
+    $subjects_stmt = $conn->prepare("SELECT id, name FROM subjects WHERE teacher_id = ? AND is_active = 1");
+    $subjects_stmt->execute([$teacher_id]);
+    $teacher_subjects = $subjects_stmt->fetchAll();
+} catch (Exception $e) {
+    $teacher_subjects = [];
+}
 
 // تحديد المادة المختارة
 $selected_subject = $_GET['subject_id'] ?? '';
 
 // جلب الطلاب المسجلين في مواد المعلم
-if ($selected_subject) {
-    $students_stmt = $conn->prepare("
-        SELECT e.*, u.full_name, u.email, u.phone, u.created_at as registration_date,
-               s.name as subject_name, s.price,
-               (SELECT COUNT(*) FROM quiz_results qr 
-                JOIN quizzes q ON qr.quiz_id = q.id 
-                WHERE q.subject_id = s.id AND qr.user_id = u.id) as completed_quizzes,
-               (SELECT AVG(qr.score) FROM quiz_results qr 
-                JOIN quizzes q ON qr.quiz_id = q.id 
-                WHERE q.subject_id = s.id AND qr.user_id = u.id) as avg_score
-        FROM enrollments e
-        JOIN users u ON e.user_id = u.id
-        JOIN subjects s ON e.subject_id = s.id
-        WHERE s.teacher_id = ? AND e.subject_id = ?
-        ORDER BY e.enrollment_date DESC
-    ");
-    $students_stmt->execute([$teacher_id, $selected_subject]);
-} else {
-    $students_stmt = $conn->prepare("
-        SELECT e.*, u.full_name, u.email, u.phone, u.created_at as registration_date,
-               s.name as subject_name, s.price,
-               (SELECT COUNT(*) FROM quiz_results qr 
-                JOIN quizzes q ON qr.quiz_id = q.id 
-                WHERE q.subject_id = s.id AND qr.user_id = u.id) as completed_quizzes,
-               (SELECT AVG(qr.score) FROM quiz_results qr 
-                JOIN quizzes q ON qr.quiz_id = q.id 
-                WHERE q.subject_id = s.id AND qr.user_id = u.id) as avg_score
-        FROM enrollments e
-        JOIN users u ON e.user_id = u.id
-        JOIN subjects s ON e.subject_id = s.id
-        WHERE s.teacher_id = ?
-        ORDER BY e.enrollment_date DESC
-    ");
-    $students_stmt->execute([$teacher_id]);
+try {
+    if ($selected_subject) {
+        $students_stmt = $conn->prepare("
+            SELECT e.*, u.full_name, u.email, u.phone, u.created_at as registration_date,
+                   s.name as subject_name, 
+                   COALESCE(s.price, 0) as price,
+                   (SELECT COUNT(*) FROM quiz_results qr 
+                    JOIN quizzes q ON qr.quiz_id = q.id 
+                    WHERE q.subject_id = s.id AND qr.user_id = u.id) as completed_quizzes,
+                   (SELECT AVG(qr.score) FROM quiz_results qr 
+                    JOIN quizzes q ON qr.quiz_id = q.id 
+                    WHERE q.subject_id = s.id AND qr.user_id = u.id) as avg_score
+            FROM enrollments e
+            JOIN users u ON e.user_id = u.id
+            JOIN subjects s ON e.subject_id = s.id
+            WHERE s.teacher_id = ? AND e.subject_id = ?
+            ORDER BY e.enrollment_date DESC
+        ");
+        $students_stmt->execute([$teacher_id, $selected_subject]);
+    } else {
+        $students_stmt = $conn->prepare("
+            SELECT e.*, u.full_name, u.email, u.phone, u.created_at as registration_date,
+                   s.name as subject_name, 
+                   COALESCE(s.price, 0) as price,
+                   (SELECT COUNT(*) FROM quiz_results qr 
+                    JOIN quizzes q ON qr.quiz_id = q.id 
+                    WHERE q.subject_id = s.id AND qr.user_id = u.id) as completed_quizzes,
+                   (SELECT AVG(qr.score) FROM quiz_results qr 
+                    JOIN quizzes q ON qr.quiz_id = q.id 
+                    WHERE q.subject_id = s.id AND qr.user_id = u.id) as avg_score
+            FROM enrollments e
+            JOIN users u ON e.user_id = u.id
+            JOIN subjects s ON e.subject_id = s.id
+            WHERE s.teacher_id = ?
+            ORDER BY e.enrollment_date DESC
+        ");
+        $students_stmt->execute([$teacher_id]);
+    }
+    $students = $students_stmt->fetchAll();
+} catch (Exception $e) {
+    $students = [];
 }
 
-$students = $students_stmt->fetchAll();
-
 // إحصائيات عامة
-$stats_stmt = $conn->prepare("
-    SELECT 
-        COUNT(DISTINCT e.user_id) as total_students,
-        COUNT(DISTINCT e.subject_id) as active_subjects,
-        SUM(CASE WHEN e.payment_status = 'paid' THEN s.price ELSE 0 END) as total_revenue,
-        COUNT(CASE WHEN e.enrollment_date >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as new_students_week
-    FROM enrollments e
-    JOIN subjects s ON e.subject_id = s.id
-    WHERE s.teacher_id = ?
-");
-$stats_stmt->execute([$teacher_id]);
-$stats = $stats_stmt->fetch();
+try {
+    $stats_stmt = $conn->prepare("
+        SELECT 
+            COUNT(DISTINCT e.user_id) as total_students,
+            COUNT(DISTINCT e.subject_id) as active_subjects,
+            SUM(CASE WHEN e.payment_status = 'paid' THEN COALESCE(s.price, 0) ELSE 0 END) as total_revenue,
+            COUNT(CASE WHEN e.enrollment_date >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as new_students_week
+        FROM enrollments e
+        JOIN subjects s ON e.subject_id = s.id
+        WHERE s.teacher_id = ?
+    ");
+    $stats_stmt->execute([$teacher_id]);
+    $stats = $stats_stmt->fetch();
+} catch (Exception $e) {
+    $stats = [
+        'total_students' => 0,
+        'active_subjects' => 0,
+        'total_revenue' => 0,
+        'new_students_week' => 0
+    ];
+}
 
 // جلب بيانات المعلم
-$teacher_stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
-$teacher_stmt->execute([$teacher_id]);
-$teacher = $teacher_stmt->fetch();
+try {
+    $teacher_stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
+    $teacher_stmt->execute([$teacher_id]);
+    $teacher = $teacher_stmt->fetch();
+} catch (Exception $e) {
+    $teacher = null;
+}
 ?>
 
 <!DOCTYPE html>
@@ -91,11 +128,8 @@ $teacher = $teacher_stmt->fetch();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>إدارة الطلاب - منصة همّة التوجيهي</title>
     
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     
     <style>
@@ -237,7 +271,6 @@ $teacher = $teacher_stmt->fetch();
     </style>
 </head>
 <body>
-    <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="../home/index.php">
@@ -270,7 +303,7 @@ $teacher = $teacher_stmt->fetch();
                 <ul class="navbar-nav">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user-circle"></i> <?php echo htmlspecialchars($teacher['full_name']); ?>
+                            <i class="fas fa-user-circle"></i> <?php echo htmlspecialchars($teacher['full_name'] ?? 'المعلم'); ?>
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="profile.php"><i class="fas fa-user"></i> الملف الشخصي</a></li>
@@ -282,10 +315,8 @@ $teacher = $teacher_stmt->fetch();
         </div>
     </nav>
 
-    <!-- Main Content -->
     <div class="main-content">
         <div class="container">
-            <!-- Page Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                     <h2><i class="fas fa-users"></i> إدارة الطلاب</h2>
@@ -293,13 +324,12 @@ $teacher = $teacher_stmt->fetch();
                 </div>
             </div>
 
-            <!-- Statistics Cards -->
             <div class="row mb-4">
                 <div class="col-lg-3 col-md-6 mb-3">
                     <div class="card stats-card">
                         <div class="card-body text-center">
                             <i class="fas fa-users fa-2x mb-2"></i>
-                            <h3><?php echo $stats['total_students']; ?></h3>
+                            <h3><?php echo (int)($stats['total_students'] ?? 0); ?></h3>
                             <p class="mb-0">إجمالي الطلاب</p>
                         </div>
                     </div>
@@ -308,7 +338,7 @@ $teacher = $teacher_stmt->fetch();
                     <div class="card stats-card success">
                         <div class="card-body text-center">
                             <i class="fas fa-book fa-2x mb-2"></i>
-                            <h3><?php echo $stats['active_subjects']; ?></h3>
+                            <h3><?php echo (int)($stats['active_subjects'] ?? 0); ?></h3>
                             <p class="mb-0">المواد النشطة</p>
                         </div>
                     </div>
@@ -317,7 +347,7 @@ $teacher = $teacher_stmt->fetch();
                     <div class="card stats-card warning">
                         <div class="card-body text-center">
                             <i class="fas fa-dollar-sign fa-2x mb-2"></i>
-                            <h3><?php echo number_format($stats['total_revenue'], 2); ?>ش</h3>
+                            <h3><?php echo number_format((float)($stats['total_revenue'] ?? 0), 2); ?>ش</h3>
                             <p class="mb-0">إجمالي الإيرادات</p>
                         </div>
                     </div>
@@ -326,14 +356,13 @@ $teacher = $teacher_stmt->fetch();
                     <div class="card stats-card danger">
                         <div class="card-body text-center">
                             <i class="fas fa-user-plus fa-2x mb-2"></i>
-                            <h3><?php echo $stats['new_students_week']; ?></h3>
+                            <h3><?php echo (int)($stats['new_students_week'] ?? 0); ?></h3>
                             <p class="mb-0">طلاب جدد هذا الأسبوع</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Filter Section -->
             <div class="card filter-card mb-4">
                 <div class="card-body">
                     <form method="GET" action="">
@@ -360,7 +389,6 @@ $teacher = $teacher_stmt->fetch();
                 </div>
             </div>
 
-            <!-- Students List -->
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -409,37 +437,37 @@ $teacher = $teacher_stmt->fetch();
                                             </td>
                                             <td>
                                                 <div class="progress" style="height: 8px;">
-                                                    <div class="progress-bar" style="width: <?php echo $student['progress_percentage']; ?>%"></div>
+                                                    <div class="progress-bar" style="width: <?php echo (int)($student['progress_percentage'] ?? 0); ?>%"></div>
                                                 </div>
-                                                <small class="text-muted"><?php echo number_format($student['progress_percentage'], 1); ?>%</small>
+                                                <small class="text-muted"><?php echo number_format((float)($student['progress_percentage'] ?? 0), 1); ?>%</small>
                                             </td>
                                             <td>
-                                                <span class="badge bg-success"><?php echo (int)$student['completed_quizzes']; ?></span>
+                                                <span class="badge bg-success"><?php echo (int)($student['completed_quizzes'] ?? 0); ?></span>
                                             </td>
                                             <td>
                                                 <?php if ($student['avg_score']): ?>
-                                                    <span class="badge bg-primary"><?php echo number_format($student['avg_score'], 1); ?>%</span>
+                                                    <span class="badge bg-primary"><?php echo number_format((float)$student['avg_score'], 1); ?>%</span>
                                                 <?php else: ?>
                                                     <span class="text-muted">-</span>
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <span class="badge badge-status <?php echo $student['payment_status'] === 'paid' ? 'bg-success' : 'bg-warning'; ?>">
-                                                    <?php echo $student['payment_status'] === 'paid' ? 'مدفوع' : 'في الانتظار'; ?>
+                                                <span class="badge badge-status <?php echo ($student['payment_status'] ?? '') === 'paid' ? 'bg-success' : 'bg-warning'; ?>">
+                                                    <?php echo ($student['payment_status'] ?? '') === 'paid' ? 'مدفوع' : 'في الانتظار'; ?>
                                                 </span>
                                             </td>
                                             <td>
-                                                <small><?php echo date('Y-m-d', strtotime($student['enrollment_date'])); ?></small>
+                                                <small><?php echo date('Y-m-d', strtotime($student['enrollment_date'] ?? 'now')); ?></small>
                                             </td>
                                             <td>
                                                 <div class="btn-group btn-group-sm">
                                                     <button class="btn btn-outline-primary" 
-                                                            onclick="viewStudentDetails(<?php echo $student['user_id']; ?>)"
+                                                            onclick="viewStudentDetails(<?php echo (int)$student['user_id']; ?>)"
                                                             title="عرض التفاصيل">
                                                         <i class="fas fa-eye"></i>
                                                     </button>
                                                     <button class="btn btn-outline-success" 
-                                                            onclick="sendMessage(<?php echo $student['user_id']; ?>)"
+                                                            onclick="sendMessage(<?php echo (int)$student['user_id']; ?>)"
                                                             title="إرسال رسالة">
                                                         <i class="fas fa-envelope"></i>
                                                     </button>
@@ -456,7 +484,6 @@ $teacher = $teacher_stmt->fetch();
         </div>
     </div>
 
-    <!-- Student Details Modal -->
     <div class="modal fade" id="studentDetailsModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -471,12 +498,10 @@ $teacher = $teacher_stmt->fetch();
         </div>
     </div>
 
-    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
         function viewStudentDetails(studentId) {
-            // Load student details via AJAX
             fetch(`student_details.php?id=${studentId}`)
                 .then(response => response.text())
                 .then(data => {
@@ -490,14 +515,8 @@ $teacher = $teacher_stmt->fetch();
         }
 
         function sendMessage(studentId) {
-            // Implement messaging functionality
             alert('سيتم إضافة نظام الرسائل قريباً');
         }
-
-        // Auto refresh every 30 seconds
-        setInterval(function() {
-            location.reload();
-        }, 30000);
     </script>
 </body>
 </html>
